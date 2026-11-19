@@ -51,8 +51,20 @@ export interface EvaluatedTxResult {
   };
 }
 
+interface LookupRiskAlertInput {
+  risk_score: number;
+  recipient_name: string;
+  recipient_account_masked: string;
+  dest_institution: string;
+  source_institution?: string;
+  location_label?: string;
+  ip_address?: string;
+  amount?: number;
+}
+
 interface RiskDecisionContextValue {
   submitAndRouteTransaction: (payload: Record<string, any>) => Promise<EvaluatedTxResult>;
+  triggerLookupRiskAlert: (info: LookupRiskAlertInput) => Promise<void>;
   runQuickTest: (preset: "low" | "medium" | "high") => Promise<void>;
   triggerAlarmTest: () => Promise<void>;
   lastUpdateTick: number;
@@ -71,7 +83,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const routeEvaluatedTx = async (res: EvaluatedTxResult) => {
     setLastUpdateTick((t) => t + 1);
-    if (res.risk_score <= 50) {
+    if (res.risk_score <= 30) {
       setTier1Toast({
         score: res.risk_score,
         ref: res.tx_ref,
@@ -87,6 +99,39 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setTier3Alert(res);
       await startFraudAlarm();
     }
+  };
+
+  const triggerLookupRiskAlert = async (info: LookupRiskAlertInput) => {
+    await unlockAudio();
+    const score = info.risk_score;
+    const riskLevel = score <= 30 ? "Low Risk" : score < 80 ? "Medium Risk" : "High Risk";
+    const tier: EvaluatedTxResult["tier"] =
+      score <= 30 ? "AUTO_APPROVED" : score < 80 ? "PENDING_USER_APPROVAL" : "AUTO_REJECTED";
+    const tierNum: 1 | 2 | 3 = score <= 30 ? 1 : score < 80 ? 2 : 3;
+
+    const synthetic: EvaluatedTxResult = {
+      id: 0,
+      tx_ref: `LK-${Date.now().toString(36).toUpperCase()}`,
+      amount: info.amount ?? 15000,
+      currency: "BDT",
+      tx_type: "Recipient Pre-Transfer Check",
+      recipient_name: info.recipient_name,
+      recipient_account_masked: info.recipient_account_masked,
+      source_institution: info.source_institution || "FraudShield Account",
+      dest_institution: info.dest_institution,
+      status: tier === "AUTO_APPROVED" ? "Completed" : tier === "PENDING_USER_APPROVAL" ? "Pending Review" : "Auto-Rejected",
+      device_label: navigator.platform || "Web Client",
+      ip_address: info.ip_address || "103.148.72.14",
+      location_label: info.location_label || "Dhaka, Bangladesh",
+      latitude: null,
+      longitude: null,
+      risk_score: score,
+      risk_level: riskLevel,
+      tier,
+      tier_number: tierNum,
+      evaluation_ms: 14,
+    };
+    await routeEvaluatedTx(synthetic);
   };
 
   const submitAndRouteTransaction = async (payload: Record<string, any>) => {
@@ -148,10 +193,12 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (!tier2Pending) return;
     setBusyDecision(true);
     try {
-      await api.request(`/api/v1/transactions/${tier2Pending.id}/tier-decision`, {
-        method: "POST",
-        body: JSON.stringify({ action }),
-      });
+      if (tier2Pending.id > 0) {
+        await api.request(`/api/v1/transactions/${tier2Pending.id}/tier-decision`, {
+          method: "POST",
+          body: JSON.stringify({ action }),
+        });
+      }
       setTier2Pending(null);
       setLastUpdateTick((t) => t + 1);
     } finally {
@@ -161,7 +208,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const handleTier3Confirm = async () => {
     stopFraudAlarm();
-    if (tier3Alert) {
+    if (tier3Alert && tier3Alert.id > 0) {
       try {
         await api.request(`/api/v1/transactions/${tier3Alert.id}/tier-decision`, {
           method: "POST",
@@ -178,7 +225,13 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   return (
     <RiskDecisionContext.Provider
-      value={{ submitAndRouteTransaction, runQuickTest, triggerAlarmTest, lastUpdateTick }}
+      value={{
+        submitAndRouteTransaction,
+        triggerLookupRiskAlert,
+        runQuickTest,
+        triggerAlarmTest,
+        lastUpdateTick,
+      }}
     >
       {children}
 
@@ -188,7 +241,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           <div className="text-xs flex-1">
             <div className="font-bold text-white">
-              Transaction Auto-Approved • Risk Score: {tier1Toast.score}%
+              Transaction Auto-Approved (0–30% Low Risk) • Risk Score: {tier1Toast.score}%
             </div>
             <div className="text-emerald-300/90 mt-0.5 font-mono">
               {tier1Toast.ref} · Completed in {tier1Toast.ms}ms (Tier 1)
@@ -204,7 +257,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         </div>
       )}
 
-      {/* TIER 2 (50% - 79%): Full-Site User Approval Modal ("Are you approve or not?") */}
+      {/* TIER 2 (31% - 79%): Full-Site User Approval Modal ("Approve or Not?") */}
       {tier2Pending && (
         <div className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-[#0d1322] border-2 border-orange-500/60 rounded-2xl p-6 shadow-[0_0_45px_rgba(249,115,22,0.28)] space-y-5">
@@ -214,10 +267,10 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
               </div>
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-orange-400">
-                  Tier 2 Security Check • Risk Score: {tier2Pending.risk_score}%
+                  Tier 2 Security Check (31–79% Medium Risk) • Risk Score: {tier2Pending.risk_score}%
                 </div>
                 <h2 className="text-lg font-bold text-white mt-0.5">
-                  Suspicious Activity Detected — Are you approve or not?
+                  Suspicious Activity Detected — Approve or Not?
                 </h2>
               </div>
             </div>
@@ -266,7 +319,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 onClick={() => handleTier2Action("NOT_APPROVE")}
                 className="px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg transition-colors"
               >
-                Not Approve (Block Transaction)
+                Not Approve (Reject Transaction)
               </button>
               <button
                 type="button"
@@ -274,7 +327,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 onClick={() => handleTier2Action("APPROVE")}
                 className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg transition-colors"
               >
-                Approve (Yes, It&apos;s Me)
+                Approve (Yes, Approve)
               </button>
             </div>
           </div>
@@ -356,7 +409,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           <div className="mb-4 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-950/70 border border-red-400/40 text-[11px] text-red-200">
             <Volume2 className="w-3.5 h-3.5 animate-pulse text-red-400" />
             <span>
-              Critical Transfer Auto-Rejected ({tier3Alert.risk_score}% Risk) • Security Alarm Active
+              Critical Transfer Auto-Rejected ({tier3Alert.risk_score}% Risk • 80–100% High Alert) • Security Alarm Sound Active
             </span>
           </div>
 

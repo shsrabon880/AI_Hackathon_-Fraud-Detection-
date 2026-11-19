@@ -15,6 +15,7 @@ import {
   User,
   XCircle,
 } from "lucide-react";
+import { useRiskDecision } from "../context/RiskDecisionContext";
 import { api } from "../services/api";
 import { GoogleGeoMap } from "./GoogleGeoMap";
 import { InstitutionLogo } from "./InstitutionLogo";
@@ -72,6 +73,7 @@ const JUDGE_SCENARIOS = [
 ];
 
 export const RecipientLookupSection: React.FC = () => {
+  const { triggerLookupRiskAlert } = useRiskDecision();
   const [activeTab, setActiveTab] = useState<"phone" | "bank">("phone");
   const [demoMode, setDemoMode] = useState(true);
 
@@ -101,7 +103,7 @@ export const RecipientLookupSection: React.FC = () => {
   const [loadingAi, setLoadingAi] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const lookupPhone = async (phoneVal: string, useDemo = demoMode) => {
+  const lookupPhone = async (phoneVal: string, useDemo = demoMode, triggerAlert = false) => {
     const cleaned = phoneVal.trim();
     if (cleaned.length < 6) {
       setError("Please enter a valid Bangladeshi mobile number (01XXXXXXXXX or +8801XXXXXXXXX).");
@@ -115,6 +117,19 @@ export const RecipientLookupSection: React.FC = () => {
         `/api/v1/recipient-intel/phone?phone=${encodeURIComponent(cleaned)}&demo_mode=${useDemo}`
       );
       setPhoneData(res);
+      if (triggerAlert && typeof res?.risk_analysis?.risk_score === "number") {
+        await triggerLookupRiskAlert({
+          risk_score: res.risk_analysis.risk_score,
+          recipient_name:
+            res.profile?.verified_name && res.profile.verified_name !== "Not Available"
+              ? res.profile.verified_name
+              : "Mobile Recipient",
+          recipient_account_masked: `****${cleaned.slice(-4)}`,
+          dest_institution: res.profile?.mobile_operator || "BD Mobile / MFS",
+          source_institution: "FraudShield Wallet Check",
+          location_label: res.profile?.address_region || "Dhaka, Bangladesh",
+        });
+      }
     } catch (err: any) {
       setError(err.message || "Phone lookup failed.");
     } finally {
@@ -126,7 +141,8 @@ export const RecipientLookupSection: React.FC = () => {
     bCode = selectedBankCode,
     acct = accountNumber,
     hName = holderName,
-    aType = accountType
+    aType = accountType,
+    triggerAlert = false
   ) => {
     const bankObj = BD_BANKS.find((b) => b.code === bCode) || BD_BANKS[0];
     setError(null);
@@ -144,6 +160,19 @@ export const RecipientLookupSection: React.FC = () => {
         }),
       });
       setBankData(res);
+      if (triggerAlert && typeof res?.risk_score === "number") {
+        await triggerLookupRiskAlert({
+          risk_score: res.risk_score,
+          recipient_name:
+            res.account_holder_name && !res.account_holder_name.startsWith("Not Available")
+              ? res.account_holder_name
+              : `${bankObj.name} Account`,
+          recipient_account_masked: res.masked_account || `****${acct.slice(-4)}`,
+          dest_institution: bankObj.name,
+          source_institution: "FraudShield Bank Check",
+          location_label: "Dhaka, Bangladesh",
+        });
+      }
     } catch (err: any) {
       setError(err.message || "Bank account verification failed.");
     } finally {
@@ -306,11 +335,11 @@ export const RecipientLookupSection: React.FC = () => {
                   setDemoMode(true);
                   if (activeTab === "phone") {
                     setPhoneInput(sc.phone);
-                    lookupPhone(sc.phone, true);
+                    lookupPhone(sc.phone, true, true);
                   } else {
                     setSelectedBankCode(sc.bankCode);
                     setAccountNumber(sc.account);
-                    lookupBank(sc.bankCode, sc.account, "", accountType);
+                    lookupBank(sc.bankCode, sc.account, "", accountType, true);
                   }
                 }}
                 className={`px-2.5 py-1 rounded-md border font-semibold ${sc.cls}`}
@@ -327,7 +356,7 @@ export const RecipientLookupSection: React.FC = () => {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                lookupPhone(phoneInput);
+                lookupPhone(phoneInput, demoMode, true);
               }}
               className="flex flex-wrap items-center gap-2"
             >
@@ -359,7 +388,7 @@ export const RecipientLookupSection: React.FC = () => {
                   onClick={() => {
                     setDemoMode(true);
                     setPhoneInput(c.phone);
-                    lookupPhone(c.phone, true);
+                    lookupPhone(c.phone, true, true);
                   }}
                   className={`px-2.5 py-1 rounded-md border transition-colors ${
                     phoneInput === c.phone
@@ -379,7 +408,7 @@ export const RecipientLookupSection: React.FC = () => {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              lookupBank();
+              lookupBank(selectedBankCode, accountNumber, holderName, accountType, true);
             }}
             className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-2 border-t border-[#182238] text-xs"
           >

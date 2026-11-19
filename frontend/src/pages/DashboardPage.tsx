@@ -143,7 +143,7 @@ export const DashboardPage: React.FC = () => {
           <Zap className="w-4 h-4 text-purple-400 shrink-0" />
           <span className="font-semibold text-white">3-Tier Risk Approval Simulator:</span>
           <span className="text-slate-400 hidden sm:inline">
-            Test automated Low (0–50%), User Prompt (50–79%), and Critical FRAUD ALERT + Alarm (80%+)
+            Test automated Low (0–30% Auto-Approve), Medium (31–79% Approve or Not), and Critical FRAUD ALERT + Alarm (80–100% Auto-Reject)
           </span>
         </div>
 

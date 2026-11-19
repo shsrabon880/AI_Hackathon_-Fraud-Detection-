@@ -92,7 +92,7 @@ def _apply_filters(
 
 def _classify_tier(score: float) -> tuple[str, int, str]:
     """Three-tier automated & interactive risk decision routing."""
-    if score <= 50.0:
+    if score <= 30.0:
         return "AUTO_APPROVED", 1, "Completed"
     if score < 80.0:
         return "PENDING_USER_APPROVAL", 2, "Pending Review"

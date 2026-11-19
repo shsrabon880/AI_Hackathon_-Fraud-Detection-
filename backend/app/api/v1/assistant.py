@@ -15,7 +15,7 @@ def _build_reply(prompt: str, user: User, db: Session) -> dict:
     tx_count = db.query(Transaction).filter(Transaction.user_id == user.id).count()
     flagged_count = (
         db.query(Transaction)
-        .filter(Transaction.user_id == user.id, Transaction.risk_score >= 50)
+        .filter(Transaction.user_id == user.id, Transaction.risk_score > 30)
         .count()
     )
     open_alerts = (
@@ -30,12 +30,12 @@ def _build_reply(prompt: str, user: User, db: Session) -> dict:
     )
     device_count = db.query(Device).filter(Device.user_id == user.id).count()
 
-    if any(k in q for k in ("threshold", "tier", "approve", "alarm", "50", "80", "92", "score", "risk")):
+    if any(k in q for k in ("threshold", "tier", "approve", "alarm", "30", "31", "80", "92", "score", "risk")):
         answer = (
             "FraudShield uses a 3-Tier Automated Risk Approval Engine:\n"
-            "• Tier 1 — Low Risk (0–50%): Automatically approved (AUTO_APPROVED) in <50ms with a non-blocking emerald toast and logged as Completed.\n"
-            "• Tier 2 — Medium-High Risk (50–79%): Pauses the transaction (PENDING_USER_APPROVAL) and opens a full-site prompt asking 'Are you approve or not?'. Choose 'Approve' to trust it or 'Not Approve' to block and flag the device.\n"
-            "• Tier 3 — Critical Risk (80–100%): Immediately auto-rejects & freezes the transfer (AUTO_REJECTED), locks suspicious session activity, sounds the Web Audio security alarm, and displays the full-screen FRAUD ALERT takeover."
+            "• Tier 1 — Low Risk (0–30%): Automatically approved (AUTO_APPROVED) in <50ms with a non-blocking emerald alert and logged as Completed.\n"
+            "• Tier 2 — Medium Risk (31–79%): Pauses the transaction (PENDING_USER_APPROVAL) and opens an approval prompt asking 'Approve or Not?'. Choose 'Approve' to authorize or 'Not Approve' to reject.\n"
+            "• Tier 3 — High Risk (80–100%): Immediately auto-rejects & freezes the transfer (AUTO_REJECTED), sounds the Web Audio security alarm, and displays the full-screen FRAUD ALERT takeover."
         )
     elif any(k in q for k in ("how", "work", "architecture", "ml", "graph", "engine", "explain")):
         answer = (
@@ -77,7 +77,7 @@ def _build_reply(prompt: str, user: User, db: Session) -> dict:
             f"({flagged_count} medium/high risk, {open_alerts} open alert(s), {connected_count} connected institution(s)).\n"
             "Ask me about:\n"
             "• How Streaming ML + Graph Mule Detection works\n"
-            "• 3-Tier Risk Thresholds (0–50% Auto-Approve, 50–79% Prompt, 80%+ FRAUD ALERT)\n"
+            "• 3-Tier Risk Thresholds (0–30% Auto-Approve, 31–79% Approve or Not, 80–100% FRAUD ALERT + Alarm + Auto-Reject)\n"
             "• How to use any sidebar page, enable MFA, or export PDF/CSV statements."
         )
 
