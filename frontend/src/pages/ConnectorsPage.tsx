@@ -240,12 +240,12 @@ export const ConnectorsPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#182238]">
-                <span className="px-2.5 py-1 rounded-md bg-[#131b2e] border border-[#223052] text-[11px] font-medium text-slate-300">
-                  {item.category === "bank" ? "Commercial Bank" : "MFS Wallet"}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#182238]">
+                <span className="px-2 py-1 rounded-md bg-[#131b2e] border border-[#223052] text-[10.5px] font-medium text-slate-300">
+                  {item.category === "bank" ? "Bank" : "MFS Wallet"}
                 </span>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setUploadTarget(item.institution_name)}

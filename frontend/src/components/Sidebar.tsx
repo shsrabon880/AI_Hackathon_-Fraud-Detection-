@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
+  FileSearch,
   FileText,
   History,
   LayoutGrid,
@@ -24,6 +25,7 @@ import { useAuth } from "../context/AuthContext";
 
 const PRIMARY_NAV = [
   { label: "Dashboard", to: "/", icon: LayoutGrid },
+  { label: "Recipient Lookup", to: "/recipient-lookup", icon: FileSearch },
   { label: "System Users", to: "/users", icon: UserCog },
   { label: "Devices", to: "/devices", icon: MonitorSmartphone },
   { label: "Connectors", to: "/connectors", icon: Link2 },

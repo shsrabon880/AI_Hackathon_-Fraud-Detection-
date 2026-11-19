@@ -334,6 +334,7 @@ export const TransactionHistoryPage: React.FC = () => {
           <option value="">All Banks & Wallets</option>
           <option value="bKash">bKash</option>
           <option value="Nagad">Nagad</option>
+          <option value="Rocket">Rocket</option>
           <option value="upay">upay</option>
           <option value="City Bank">City Bank</option>
           <option value="BRAC Bank">BRAC Bank</option>

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     GOOGLE_MAPS_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
 

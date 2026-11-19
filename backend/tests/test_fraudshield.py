@@ -291,4 +291,98 @@ def test_three_tier_risk_engine_and_assistant():
             assert t3.json()["tier"] == "AUTO_REJECTED"
             assert t3.json()["status"] == "Auto-Rejected"
 
+            # Recipient Phone / Bank Account Risk Lookup
+            high_lk = await client.get("/api/v1/intelligence/recipient-lookup?query=01999884433", headers=headers)
+            assert high_lk.status_code == 200
+            assert high_lk.json()["risk_summary"]["risk_percentage"] >= 80
+            assert high_lk.json()["person_profile"]["valid_person"] is False
+            assert high_lk.json()["risk_summary"]["prior_high_risk_count"] >= 1
+
+            ok_lk = await client.get("/api/v1/intelligence/recipient-lookup?query=01711889900", headers=headers)
+            assert ok_lk.status_code == 200
+            assert ok_lk.json()["person_profile"]["valid_person"] is True
+            assert ok_lk.json()["person_profile"]["full_name"].startswith("Rahim Enterprise")
+            assert ok_lk.json()["risk_summary"]["risk_percentage"] <= 30
+
+            ext_lk = await client.get("/api/v1/intelligence/recipient-lookup?query=01555123456", headers=headers)
+            assert ext_lk.status_code == 200
+            assert ext_lk.json()["input_type"] == "BD Mobile / MFS Number"
+
+    _run(run())
+
+
+def test_recipient_intelligence_center_and_bank_lookup():
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            headers = await _login_headers(client, "srabon@finsphere.ai", "FraudShield#2026")
+
+            # 1. Demo scenarios & 5 team profiles
+            scen = await client.get("/api/v1/recipient-intel/scenarios", headers=headers)
+            assert scen.status_code == 200
+            phones = {p["phone"] for p in scen.json()["team_profiles"]}
+            assert {"01782670589", "01858500761", "01788930055", "01776277356", "01315244948"}.issubset(phones)
+
+            # 2. Phone Intelligence for Srabon (01782670589) & +880 format
+            ph1 = await client.get("/api/v1/recipient-intel/phone?phone=%2B8801782670589", headers=headers)
+            assert ph1.status_code == 200
+            assert ph1.json()["profile"]["verified_name"] == "Srabon"
+            assert ph1.json()["profile"]["mobile_operator"] == "Grameenphone"
+            assert ph1.json()["risk_analysis"]["risk_level"] == "Low Risk"
+
+            # 3. Unknown external number must NOT fabricate identity or age
+            ph_ext = await client.get("/api/v1/recipient-intel/phone?phone=01612345678", headers=headers)
+            assert ph_ext.status_code == 200
+            assert ph_ext.json()["profile"]["age"] == "Not Available"
+            assert ph_ext.json()["profile"]["account_verification_status"] == "Verification Unavailable"
+
+            # 4. Bank Account Lookup (Verified Demo + Unavailable External)
+            bk_ok = await client.post(
+                "/api/v1/recipient-intel/bank",
+                json={"bank_code": "brac_bank", "bank_name": "BRAC Bank", "account_number": "100234567890"},
+                headers=headers,
+            )
+            assert bk_ok.status_code == 200
+            assert bk_ok.json()["account_verification_status"] == "Verified"
+            assert bk_ok.json()["masked_account"] == "********7890"
+
+            bk_flag = await client.post(
+                "/api/v1/recipient-intel/bank",
+                json={"bank_code": "islami_bank", "bank_name": "Islami Bank Bangladesh", "account_number": "400999884491"},
+                headers=headers,
+            )
+            assert bk_flag.status_code == 200
+            assert bk_flag.json()["account_verification_status"] == "Not Verified"
+            assert bk_flag.json()["risk_score"] >= 80
+
+            # 5. AI Report requires explicit consent
+            ai_no = await client.post(
+                "/api/v1/recipient-intel/ai-report",
+                json={
+                    "subject_type": "phone",
+                    "masked_identifier": "****0589",
+                    "risk_score": 12,
+                    "risk_level": "Low Risk",
+                    "verification_status": "Verified",
+                    "consent_granted": False,
+                },
+                headers=headers,
+            )
+            assert ai_no.status_code == 400
+
+            ai_ok = await client.post(
+                "/api/v1/recipient-intel/ai-report",
+                json={
+                    "subject_type": "phone",
+                    "masked_identifier": "****0589",
+                    "risk_score": 12,
+                    "risk_level": "Low Risk",
+                    "verification_status": "Verified",
+                    "consent_granted": True,
+                },
+                headers=headers,
+            )
+            assert ai_ok.status_code == 200
+            assert "Low Risk" in ai_ok.json()["summary"]
+
     _run(run())

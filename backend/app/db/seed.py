@@ -32,6 +32,7 @@ CONNECTOR_CATALOG = [
     ("scb_bd", "Standard Chartered Bangladesh", "bank", "Open Banking Sandbox / CSV"),
     ("bkash", "bKash", "mfs", "Authorized MFS Sandbox / Statement"),
     ("nagad", "Nagad", "mfs", "Authorized MFS Sandbox / Statement"),
+    ("rocket", "Rocket (DBBL MFS)", "mfs", "Authorized MFS Sandbox / Statement"),
     ("upay", "upay", "mfs", "Authorized MFS Sandbox / Statement"),
 ]
 

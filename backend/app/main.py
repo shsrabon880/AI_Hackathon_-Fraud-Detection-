@@ -12,6 +12,7 @@ from app.api.v1 import (
     devices,
     intelligence,
     policies,
+    recipient_intel,
     services,
     sessions,
     transactions,
@@ -85,3 +86,4 @@ app.include_router(services.router, prefix=API_PREFIX)
 app.include_router(policies.router, prefix=API_PREFIX)
 app.include_router(sessions.router, prefix=API_PREFIX)
 app.include_router(intelligence.router, prefix=API_PREFIX)
+app.include_router(recipient_intel.router, prefix=API_PREFIX)

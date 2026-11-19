@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { FraudShieldAssistant } from "./components/FraudShieldAssistant";
+import { RecipientLookupSection } from "./components/RecipientLookupSection";
 import { Sidebar } from "./components/Sidebar";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RiskDecisionProvider } from "./context/RiskDecisionContext";
@@ -51,6 +52,7 @@ const ProtectedShell: React.FC = () => {
             <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/transactions" element={<TransactionHistoryPage />} />
             <Route path="/investigation" element={<InvestigationPage />} />
+            <Route path="/recipient-lookup" element={<RecipientLookupSection />} />
             <Route path="/graph" element={<GraphNetworkPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/audit-logs" element={<AuditLogsPage />} />
