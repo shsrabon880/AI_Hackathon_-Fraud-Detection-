@@ -720,34 +720,14 @@ export const LoginPage: React.FC = () => {
             </form>
           )}
 
-          {/* One-click Demo Account Fill */}
-          <div className="mt-5 p-3.5 rounded-xl bg-[#080d1a] border border-[#19233b] text-[11px] text-slate-400 space-y-2">
-            <div className="font-semibold text-amber-300/90">
-              JUDGE DEMO ACCOUNTS (Click to auto-fill)
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  openAuthMode("login");
-                  setEmail("srabon@finsphere.ai");
-                  setPassword("FraudShield#2026");
-                }}
-                className="px-2.5 py-1.5 rounded-md bg-[#121a2e] hover:bg-[#1a2542] border border-[#253256] text-slate-200 transition-colors"
-              >
-                Admin: <code className="text-purple-300">srabon@finsphere.ai</code>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  openAuthMode("login");
-                  setEmail("ayesha@finsphere.ai");
-                  setPassword("AyeshaSafe#2026");
-                }}
-                className="px-2.5 py-1.5 rounded-md bg-[#121a2e] hover:bg-[#1a2542] border border-[#253256] text-slate-200 transition-colors"
-              >
-                User: <code className="text-purple-300">ayesha@finsphere.ai</code>
-              </button>
+          {/* Team GlitchCraft Signature */}
+          <div className="mt-5 p-3.5 rounded-xl bg-gradient-to-r from-[#0a1020] via-[#13112b] to-[#0a1020] border border-purple-500/30 text-center shadow-inner">
+            <div className="inline-flex items-center gap-2 text-xs tracking-wide text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+              <span>Created by</span>
+              <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a78bfa] via-purple-300 to-blue-400">
+                Team GlitchCraft
+              </span>
             </div>
           </div>
         </div>
