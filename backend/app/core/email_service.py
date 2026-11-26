@@ -19,6 +19,33 @@ def _dispatch_email(recipient_email: str, subject: str, text_body: str, html_bod
     settings = get_settings()
     from_addr = settings.SMTP_FROM_EMAIL.strip() or settings.SMTP_USERNAME.strip() or "onboarding@resend.dev"
 
+    # 1. Prefer Brevo Transactional Email HTTPS API (works on Render free tier for any recipient email)
+    if settings.BREVO_API_KEY.strip():
+        try:
+            resp = httpx.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": settings.BREVO_API_KEY.strip(),
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json={
+                    "sender": {"name": "FinSphere AI - FraudShield", "email": from_addr},
+                    "to": [{"email": recipient_email, "name": full_name}],
+                    "subject": subject,
+                    "textContent": text_body,
+                    "htmlContent": html_body,
+                },
+                timeout=10.0,
+            )
+            if resp.status_code >= 400:
+                logger.error("Email delivery via Brevo returned status %s", resp.status_code)
+                raise EmailDeliveryError("Unable to send verification email via Brevo.")
+            return
+        except httpx.HTTPError as exc:
+            logger.error("HTTP transport error while sending verification email via Brevo: %s", type(exc).__name__)
+            raise EmailDeliveryError("Email service temporarily unreachable.") from exc
+
     if settings.RESEND_API_KEY.strip():
         try:
             resp = httpx.post(

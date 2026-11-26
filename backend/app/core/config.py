@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"
 
     # Real email delivery for Sign-Up OTP verification
+    BREVO_API_KEY: str = ""
     RESEND_API_KEY: str = ""
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
