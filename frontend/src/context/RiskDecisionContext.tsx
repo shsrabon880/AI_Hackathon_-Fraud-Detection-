@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState } from "react";
-import { AlertTriangle, CheckCircle2, MapPin, ShieldAlert, Volume2, X } from "lucide-react";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { CheckCircle2, Lock, MapPin, ShieldAlert, Volume2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { startFraudAlarm, stopFraudAlarm, unlockAudio } from "../utils/alarmAudio";
@@ -77,13 +77,43 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [tier1Toast, setTier1Toast] = useState<{ score: number; ref: string; ms: number } | null>(null);
   const [tier2Pending, setTier2Pending] = useState<EvaluatedTxResult | null>(null);
   const [tier3Alert, setTier3Alert] = useState<EvaluatedTxResult | null>(null);
+  const [tier3Countdown, setTier3Countdown] = useState<number>(5);
   const [showTier3Forensics, setShowTier3Forensics] = useState(false);
   const [lastUpdateTick, setLastUpdateTick] = useState(0);
   const [busyDecision, setBusyDecision] = useState(false);
 
+  const handleTier3Confirm = async () => {
+    stopFraudAlarm();
+    if (tier3Alert && tier3Alert.id > 0) {
+      try {
+        await api.request(`/api/v1/transactions/${tier3Alert.id}/tier-decision`, {
+          method: "POST",
+          body: JSON.stringify({ action: "CONFIRM_ALERT" }),
+        });
+      } catch {
+        // Ignore network errors during automatic lock acknowledgement
+      }
+    }
+    setTier3Alert(null);
+    setShowTier3Forensics(false);
+    setLastUpdateTick((t) => t + 1);
+  };
+
+  useEffect(() => {
+    if (!tier3Alert || showTier3Forensics) return;
+    if (tier3Countdown <= 0) {
+      handleTier3Confirm();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setTier3Countdown((c) => c - 1);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [tier3Alert, tier3Countdown, showTier3Forensics]);
+
   const routeEvaluatedTx = async (res: EvaluatedTxResult) => {
     setLastUpdateTick((t) => t + 1);
-    if (res.risk_score <= 30) {
+    if (res.risk_score < 30) {
       setTier1Toast({
         score: res.risk_score,
         ref: res.tx_ref,
@@ -96,6 +126,7 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setTier2Pending(res);
     } else {
       setShowTier3Forensics(false);
+      setTier3Countdown(5);
       setTier3Alert(res);
       await startFraudAlarm();
     }
@@ -104,10 +135,10 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const triggerLookupRiskAlert = async (info: LookupRiskAlertInput) => {
     await unlockAudio();
     const score = info.risk_score;
-    const riskLevel = score <= 30 ? "Low Risk" : score < 80 ? "Medium Risk" : "High Risk";
+    const riskLevel = score < 30 ? "Low Risk" : score < 80 ? "Medium Risk" : "Critical Risk";
     const tier: EvaluatedTxResult["tier"] =
-      score <= 30 ? "AUTO_APPROVED" : score < 80 ? "PENDING_USER_APPROVAL" : "AUTO_REJECTED";
-    const tierNum: 1 | 2 | 3 = score <= 30 ? 1 : score < 80 ? 2 : 3;
+      score < 30 ? "AUTO_APPROVED" : score < 80 ? "PENDING_USER_APPROVAL" : "AUTO_REJECTED";
+    const tierNum: 1 | 2 | 3 = score < 30 ? 1 : score < 80 ? 2 : 3;
 
     const synthetic: EvaluatedTxResult = {
       id: 0,
@@ -206,23 +237,6 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
-  const handleTier3Confirm = async () => {
-    stopFraudAlarm();
-    if (tier3Alert && tier3Alert.id > 0) {
-      try {
-        await api.request(`/api/v1/transactions/${tier3Alert.id}/tier-decision`, {
-          method: "POST",
-          body: JSON.stringify({ action: "CONFIRM_ALERT" }),
-        });
-      } catch {
-        // Ignore network errors during emergency acknowledgement
-      }
-    }
-    setTier3Alert(null);
-    setShowTier3Forensics(false);
-    setLastUpdateTick((t) => t + 1);
-  };
-
   return (
     <RiskDecisionContext.Provider
       value={{
@@ -235,16 +249,16 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     >
       {children}
 
-      {/* TIER 1: Non-blocking Emerald Auto-Approve Toast */}
+      {/* TIER 1 (0–29%): Non-blocking Emerald Safe Status Toast */}
       {tier1Toast && (
         <div className="fixed top-5 right-5 z-40 max-w-sm bg-[#0b1f18] border border-emerald-500/50 text-emerald-200 px-4 py-3 rounded-xl shadow-2xl flex items-start gap-3">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           <div className="text-xs flex-1">
             <div className="font-bold text-white">
-              Transaction Auto-Approved (0–30% Low Risk) • Risk Score: {tier1Toast.score}%
+              Low Risk (0–29%) • Safe Status: {tier1Toast.score}%
             </div>
             <div className="text-emerald-300/90 mt-0.5 font-mono">
-              {tier1Toast.ref} · Completed in {tier1Toast.ms}ms (Tier 1)
+              {tier1Toast.ref} · Verified in {tier1Toast.ms}ms
             </div>
           </div>
           <button
@@ -257,22 +271,28 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         </div>
       )}
 
-      {/* TIER 2 (31% - 79%): Full-Site User Approval Modal ("Approve or Not?") */}
+      {/* TIER 2 (30–79%): Interactive FRAUD ALERT with CONFIRM / REJECT */}
       {tier2Pending && (
-        <div className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-[#0d1322] border-2 border-orange-500/60 rounded-2xl p-6 shadow-[0_0_45px_rgba(249,115,22,0.28)] space-y-5">
+        <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-[#0d1322] border-2 border-red-500/55 rounded-2xl p-6 shadow-[0_0_50px_rgba(239,68,68,0.28)] space-y-5">
             <div className="flex items-start gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-orange-500/15 border border-orange-500/40 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-6 h-6 text-orange-400" />
+              <div className="w-12 h-12 rounded-xl bg-red-600/20 border border-red-400/50 flex items-center justify-center shrink-0 relative">
+                <ShieldAlert className="w-6 h-6 text-red-400" />
+                <Lock className="w-3 h-3 text-white absolute bottom-1.5 right-1.5" />
               </div>
               <div>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-orange-400">
-                  Tier 2 Security Check (31–79% Medium Risk) • Risk Score: {tier2Pending.risk_score}%
+                <div className="text-xs font-extrabold uppercase tracking-[0.16em] text-red-400">
+                  FRAUD ALERT • Risk Score: {tier2Pending.risk_score}%
                 </div>
                 <h2 className="text-lg font-bold text-white mt-0.5">
-                  Suspicious Activity Detected — Approve or Not?
+                  Suspicious Activity (30–79%) — Explicit Verification Required
                 </h2>
               </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
+              {tier2Pending.assessment?.agent_rationale ||
+                "Anomalous device, IP, or spending pattern detected compared to your account history."}
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs bg-[#080c17] p-4 rounded-xl border border-[#1d2842]">
@@ -289,25 +309,15 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 </div>
               </div>
               <div>
-                <div className="text-slate-400">Recipient</div>
+                <div className="text-slate-400">Recipient (Masked)</div>
                 <div className="text-slate-200 font-medium mt-0.5">
                   {tier2Pending.recipient_name} ({tier2Pending.recipient_account_masked})
                 </div>
               </div>
               <div>
-                <div className="text-slate-400">Device Name</div>
-                <div className="text-slate-200 mt-0.5">{tier2Pending.device_label}</div>
-              </div>
-              <div>
-                <div className="text-slate-400">IP & Location</div>
-                <div className="text-blue-300 font-mono mt-0.5">
-                  {tier2Pending.ip_address} · {tier2Pending.location_label}
-                </div>
-              </div>
-              <div>
-                <div className="text-slate-400">Risk Score</div>
-                <div className="text-orange-400 font-bold mt-0.5">
-                  {tier2Pending.risk_score}% ({tier2Pending.risk_level})
+                <div className="text-slate-400">Device &amp; Location</div>
+                <div className="text-blue-300 mt-0.5">
+                  {tier2Pending.device_label} · {tier2Pending.location_label}
                 </div>
               </div>
             </div>
@@ -317,17 +327,17 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 type="button"
                 disabled={busyDecision}
                 onClick={() => handleTier2Action("NOT_APPROVE")}
-                className="px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg transition-colors"
+                className="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold tracking-wider uppercase shadow-lg transition-colors"
               >
-                Not Approve (Reject Transaction)
+                REJECT
               </button>
               <button
                 type="button"
                 disabled={busyDecision}
                 onClick={() => handleTier2Action("APPROVE")}
-                className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg transition-colors"
+                className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold tracking-wider uppercase shadow-lg transition-colors"
               >
-                Approve (Yes, Approve)
+                CONFIRM
               </button>
             </div>
           </div>
@@ -345,9 +355,12 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }}
         >
           {/* Wide-spaced uppercase FRAUD ALERT title */}
-          <h1 className="text-3xl sm:text-5xl font-light tracking-[0.22em] text-white uppercase mb-8 text-center drop-shadow">
+          <h1 className="text-3xl sm:text-5xl font-light tracking-[0.22em] text-white uppercase mb-2 text-center drop-shadow">
             FRAUD ALERT
           </h1>
+          <div className="text-sm sm:text-base font-bold tracking-[0.2em] text-red-300 uppercase mb-6 text-center">
+            CRITICAL RISK DETECTED • {tier3Alert.risk_score}% RISK
+          </div>
 
           {/* Glossy Crimson-Red Shield with White Border & Solid White Padlock */}
           <div className="relative flex flex-col items-center">
@@ -405,21 +418,29 @@ export const RiskDecisionProvider: React.FC<{ children: React.ReactNode }> = ({ 
             />
           </div>
 
-          {/* Active Audio Alarm Indicator */}
-          <div className="mb-4 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-950/70 border border-red-400/40 text-[11px] text-red-200">
+          {/* Active Audio Alarm Indicator & 5-Second Automatic Rejection Bar (NO Confirm Button) */}
+          <div className="mb-3 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-950/75 border border-red-400/45 text-xs text-red-100">
             <Volume2 className="w-3.5 h-3.5 animate-pulse text-red-400" />
             <span>
-              Critical Transfer Auto-Rejected ({tier3Alert.risk_score}% Risk • 80–100% High Alert) • Security Alarm Sound Active
+              Backend Auto-Rejected ({tier3Alert.risk_score}% Critical Risk) • Closing in{" "}
+              <strong className="font-mono text-white">{tier3Countdown}s</strong>
             </span>
           </div>
 
-          {/* Rectangular Thin White-Bordered CONFIRM Button */}
+          <p className="text-xs text-slate-200 max-w-md text-center mb-4">
+            {tier3Alert.currency} {tier3Alert.amount.toLocaleString()} to{" "}
+            <strong className="text-white">
+              {tier3Alert.recipient_name} ({tier3Alert.recipient_account_masked})
+            </strong>
+            . {tier3Alert.assessment?.agent_rationale || "Pending authorization blocked automatically."}
+          </p>
+
           <button
             type="button"
             onClick={handleTier3Confirm}
-            className="px-8 py-2.5 border border-white/85 rounded-sm text-xs font-medium tracking-[0.18em] uppercase text-white bg-black/25 hover:bg-white/15 transition-colors"
+            className="px-7 py-2.5 border border-white/85 rounded-sm text-xs font-medium tracking-[0.18em] uppercase text-white bg-black/30 hover:bg-white/15 transition-colors"
           >
-            CONFIRM
+            DISMISS (AUTO-REJECTED)
           </button>
 
           {/* Underlined Click here for more information Link */}

@@ -26,9 +26,13 @@ class User(Base):
     user_code = Column(String(32), unique=True, nullable=False, index=True)
     full_name = Column(String(120), nullable=False)
     email = Column(String(255), unique=True, nullable=False, index=True)
+    phone_number = Column(String(32), nullable=True, index=True)
+    country = Column(String(80), nullable=False, default="Bangladesh")
+    preferred_language = Column(String(12), nullable=False, default="en")
     password_hash = Column(String(255), nullable=False)
     role = Column(String(32), nullable=False, default="user")  # user | analyst | admin
-    status = Column(String(32), nullable=False, default="active")  # active | suspended | locked
+    status = Column(String(32), nullable=False, default="active")  # active | suspended | locked | pending_verification
+    email_verified = Column(Boolean, nullable=False, default=False)
     mfa_enabled = Column(Boolean, nullable=False, default=False)
     mfa_secret_encrypted = Column(String(512), nullable=True)
     failed_login_attempts = Column(Integer, nullable=False, default=0)
@@ -41,6 +45,10 @@ class User(Base):
     connectors = relationship("Connector", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
     policy = relationship("SecurityPolicy", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    signup_otps = relationship("SignupEmailOTP", back_populates="user", cascade="all, delete-orphan")
+    password_reset_otps = relationship("PasswordResetOTP", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    notification_pref = relationship("NotificationPreference", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
 class UserSession(Base):
@@ -274,3 +282,67 @@ class ServiceHealth(Base):
     last_run_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     last_error = Column(Text, nullable=True)
     records_processed = Column(Integer, nullable=False, default=0)
+
+
+class SignupEmailOTP(Base):
+    __tablename__ = "signup_email_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    otp_hash = Column(String(128), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    resend_available_at = Column(DateTime(timezone=True), nullable=False)
+    attempts_count = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=5)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    user = relationship("User", back_populates="signup_otps")
+
+
+class PasswordResetOTP(Base):
+    __tablename__ = "password_reset_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    otp_hash = Column(String(128), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    attempts_count = Column(Integer, nullable=False, default=0)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    user = relationship("User", back_populates="password_reset_otps")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(48), nullable=False, index=True)  # fraud_alert | critical_risk | new_device | connection | security_warning | tx_review
+    severity = Column(String(24), nullable=False, default="info")  # info | warning | high | critical
+    title = Column(String(160), nullable=False)
+    message = Column(Text, nullable=False)
+    is_read = Column(Boolean, nullable=False, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+    user = relationship("User", back_populates="notifications")
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    fraud_alerts = Column(Boolean, nullable=False, default=True)
+    critical_risk = Column(Boolean, nullable=False, default=True)
+    new_device_login = Column(Boolean, nullable=False, default=True)
+    account_connections = Column(Boolean, nullable=False, default=True)
+    suspicious_login = Column(Boolean, nullable=False, default=True)
+    tx_review = Column(Boolean, nullable=False, default=True)
+    email_notifications = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="notification_pref")

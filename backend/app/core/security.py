@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -137,3 +138,22 @@ def mask_account(value: Optional[str]) -> str:
     if len(cleaned) <= 4:
         return "*" * len(cleaned)
     return "*" * (len(cleaned) - 4) + cleaned[-4:]
+
+
+def generate_numeric_otp(length: int = 6) -> str:
+    """Generate a cryptographically secure numeric OTP using Python secrets."""
+    return f"{secrets.randbelow(10 ** length):0{length}d}"
+
+
+def hash_otp(email: str, otp_code: str) -> str:
+    """Compute keyed HMAC-SHA256 hash of a signup OTP bound to the email."""
+    msg = f"{email.strip().lower()}:{otp_code.strip()}".encode("utf-8")
+    return hmac.new(settings.SECRET_KEY.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+
+def verify_otp_hash(email: str, otp_code: str, stored_hash: str) -> bool:
+    """Constant-time verification of a hashed signup OTP."""
+    if not otp_code or not stored_hash:
+        return False
+    expected = hash_otp(email, otp_code)
+    return hmac.compare_digest(expected, stored_hash)

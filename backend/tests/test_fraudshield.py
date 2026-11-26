@@ -10,9 +10,12 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 os.environ["DATABASE_URL"] = f"sqlite:///{BACKEND_ROOT / 'test_fraudshield.db'}"
 
+from datetime import datetime, timedelta, timezone  # noqa: E402
+from app.api.v1 import auth as auth_router  # noqa: E402
 from app.db.database import Base, SessionLocal, engine  # noqa: E402
 from app.db.seed import seed_initial_data  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.models import SignupEmailOTP, User  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -47,9 +50,9 @@ def test_health_and_seeded_login():
     async def run():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            r = await client.get("/api/health")
-            assert r.status_code == 200
-            assert r.json()["status"] == "ok"
+            for endpoint in ("/health", "/api/health", "/health/database", "/api/system/status"):
+                r = await client.get(endpoint)
+                assert r.status_code == 200, f"{endpoint}: {r.text}"
 
             headers = await _login_headers(client, "srabon@finsphere.ai", "FraudShield#2026")
             me = await client.get("/api/v1/auth/me", headers=headers)
@@ -59,7 +62,14 @@ def test_health_and_seeded_login():
     _run(run())
 
 
-def test_user_registration_isolation_and_rbac():
+def test_user_registration_isolation_and_rbac(monkeypatch):
+    captured = {}
+
+    def fake_send_otp(recipient_email: str, full_name: str, otp_code: str):
+        captured[recipient_email] = otp_code
+
+    monkeypatch.setattr(auth_router, "send_signup_otp_email", fake_send_otp)
+
     async def run():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -69,9 +79,31 @@ def test_user_registration_isolation_and_rbac():
                     "full_name": "Test User Isolation",
                     "email": "isolated@finsphere.ai",
                     "password": "StrongPassword!99",
+                    "confirm_password": "StrongPassword!99",
                 },
             )
             assert reg.status_code == 201, reg.text
+            assert reg.json()["verification_required"] is True
+            assert "isolated@finsphere.ai" in captured
+            assert captured["isolated@finsphere.ai"] not in reg.text
+
+            # Verify OTP to activate account before login
+            ver = await client.post(
+                "/api/v1/auth/verify-signup-otp",
+                json={"email": "isolated@finsphere.ai", "otp": captured["isolated@finsphere.ai"]},
+            )
+            assert ver.status_code == 200, ver.text
+
+            bad_reg = await client.post(
+                "/api/v1/auth/register",
+                json={
+                    "full_name": "Fake Domain User",
+                    "email": "fake@notarealdomain123456.invalid",
+                    "password": "StrongPassword!99",
+                    "confirm_password": "StrongPassword!99",
+                },
+            )
+            assert bad_reg.status_code == 400
             iso_headers = await _login_headers(client, "isolated@finsphere.ai", "StrongPassword!99")
 
             # Isolated user must have 0 transactions (strict owner isolation)
@@ -384,5 +416,212 @@ def test_recipient_intelligence_center_and_bank_lookup():
             )
             assert ai_ok.status_code == 200
             assert "Low Risk" in ai_ok.json()["summary"]
+
+    _run(run())
+
+
+def test_signup_email_otp_verification_flow(monkeypatch):
+    sent_otps = []
+
+    def capture_email(recipient_email: str, full_name: str, otp_code: str):
+        sent_otps.append((recipient_email, otp_code))
+
+    monkeypatch.setattr(auth_router, "send_signup_otp_email", capture_email)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            # 1. Invalid email format & password mismatch rejected
+            bad_fmt = await client.post(
+                "/api/v1/auth/register",
+                json={"full_name": "Bad Email", "email": "not-an-email", "password": "Password#123", "confirm_password": "Password#123"},
+            )
+            assert bad_fmt.status_code == 422
+
+            mismatch = await client.post(
+                "/api/v1/auth/register",
+                json={"full_name": "Mismatch User", "email": "otpuser@finsphere.ai", "password": "Password#123", "confirm_password": "Different#123"},
+            )
+            assert mismatch.status_code == 400
+
+            # 2. Successful registration sends OTP (never returned in API response)
+            r1 = await client.post(
+                "/api/v1/auth/register",
+                json={"full_name": "OTP Verified User", "email": "otpuser@finsphere.ai", "password": "Password#123", "confirm_password": "Password#123"},
+            )
+            assert r1.status_code == 201, r1.text
+            assert r1.json()["verification_required"] is True
+            assert len(sent_otps) == 1
+            first_otp = sent_otps[-1][1]
+            assert first_otp not in r1.text
+
+            # 3. Duplicate email blocked (409)
+            dup = await client.post(
+                "/api/v1/auth/register",
+                json={"full_name": "Dup", "email": "otpuser@finsphere.ai", "password": "Password#123", "confirm_password": "Password#123"},
+            )
+            assert dup.status_code == 409
+
+            # 4. Login with unverified email must be blocked (403) without sending any Sign-In OTP
+            unverified_login = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "otpuser@finsphere.ai", "password": "Password#123"},
+            )
+            assert unverified_login.status_code == 403
+            assert len(sent_otps) == 1  # No OTP sent on Sign In
+
+            # 5. Incorrect OTP & Max 5 attempts lockout
+            wrong_otp = "000000" if first_otp != "000000" else "999999"
+            for i in range(4):
+                fail_try = await client.post(
+                    "/api/v1/auth/verify-signup-otp",
+                    json={"email": "otpuser@finsphere.ai", "otp": wrong_otp},
+                )
+                assert fail_try.status_code == 400
+            fifth_try = await client.post(
+                "/api/v1/auth/verify-signup-otp",
+                json={"email": "otpuser@finsphere.ai", "otp": wrong_otp},
+            )
+            assert fifth_try.status_code == 429
+
+            # 6. Resend cooldown enforced (< 60s -> 429)
+            cool_try = await client.post(
+                "/api/v1/auth/resend-signup-otp",
+                json={"email": "otpuser@finsphere.ai"},
+            )
+            assert cool_try.status_code == 429
+
+            # Bypass cooldown in DB to test Resend + Expired + Valid + Reuse
+            db = SessionLocal()
+            try:
+                user_obj = db.query(User).filter(User.email == "otpuser@finsphere.ai").first()
+                latest = db.query(SignupEmailOTP).filter(SignupEmailOTP.user_id == user_obj.id).order_by(SignupEmailOTP.id.desc()).first()
+                latest.resend_available_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+                db.commit()
+            finally:
+                db.close()
+
+            resend_ok = await client.post(
+                "/api/v1/auth/resend-signup-otp",
+                json={"email": "otpuser@finsphere.ai"},
+            )
+            assert resend_ok.status_code == 200
+            second_otp = sent_otps[-1][1]
+            assert second_otp not in resend_ok.text
+
+            # 7. Expired OTP check (mark expired, expect 400)
+            db = SessionLocal()
+            try:
+                user_obj = db.query(User).filter(User.email == "otpuser@finsphere.ai").first()
+                latest = db.query(SignupEmailOTP).filter(SignupEmailOTP.user_id == user_obj.id).order_by(SignupEmailOTP.id.desc()).first()
+                latest.expires_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+                db.commit()
+            finally:
+                db.close()
+
+            expired_try = await client.post(
+                "/api/v1/auth/verify-signup-otp",
+                json={"email": "otpuser@finsphere.ai", "otp": second_otp},
+            )
+            assert expired_try.status_code == 400
+
+            # Restore expiry and verify successfully
+            db = SessionLocal()
+            try:
+                user_obj = db.query(User).filter(User.email == "otpuser@finsphere.ai").first()
+                latest = db.query(SignupEmailOTP).filter(SignupEmailOTP.user_id == user_obj.id).order_by(SignupEmailOTP.id.desc()).first()
+                latest.expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+                db.commit()
+            finally:
+                db.close()
+
+            verify_ok = await client.post(
+                "/api/v1/auth/verify-signup-otp",
+                json={"email": "otpuser@finsphere.ai", "otp": second_otp},
+            )
+            assert verify_ok.status_code == 200
+            assert verify_ok.json()["verified"] is True
+
+            # 8. Reused OTP must fail
+            reuse_try = await client.post(
+                "/api/v1/auth/verify-signup-otp",
+                json={"email": "otpuser@finsphere.ai", "otp": second_otp},
+            )
+            assert reuse_try.status_code == 400
+
+            # 9. Normal Sign In with verified email works WITHOUT any OTP
+            otp_count_before_login = len(sent_otps)
+            login_ok = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "otpuser@finsphere.ai", "password": "Password#123"},
+            )
+            assert login_ok.status_code == 200
+            assert "access_token" in login_ok.json()
+            assert len(sent_otps) == otp_count_before_login
+
+            # 10. Existing seeded account logs in normally without OTP
+            existing_ok = await client.post(
+                "/api/v1/auth/login",
+                json={"email": "srabon@finsphere.ai", "password": "FraudShield#2026", "remember_me": True},
+            )
+            assert existing_ok.status_code == 200
+            assert "access_token" in existing_ok.json()
+            assert len(sent_otps) == otp_count_before_login
+
+    _run(run())
+
+
+def test_boundary_risk_tiers_notifications_and_profile(monkeypatch):
+    def fake_reset_email(recipient_email: str, full_name: str, otp_code: str):
+        assert len(otp_code) == 6
+
+    monkeypatch.setattr(auth_router, "send_password_reset_otp_email", fake_reset_email)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            headers = await _login_headers(client, "srabon@finsphere.ai", "FraudShield#2026")
+
+            # Boundary tests: 29% (Low), 30% & 79% (Interactive), 80% & 100% (Auto-Rejected + No Override)
+            for score, expected_tier in [
+                (29, "AUTO_APPROVED"),
+                (30, "PENDING_USER_APPROVAL"),
+                (79, "PENDING_USER_APPROVAL"),
+                (80, "AUTO_REJECTED"),
+                (100, "AUTO_REJECTED"),
+            ]:
+                tx_r = await client.post(
+                    "/api/v1/transactions",
+                    json={
+                        "amount": 12000,
+                        "recipient_name": f"Boundary {score}",
+                        "recipient_account": "01711001122",
+                        "source_institution": "bKash",
+                        "simulated_risk_score": score,
+                    },
+                    headers=headers,
+                )
+                assert tx_r.status_code == 201, tx_r.text
+                assert tx_r.json()["tier"] == expected_tier
+                if score >= 80:
+                    override = await client.post(
+                        f"/api/v1/transactions/{tx_r.json()['id']}/tier-decision",
+                        json={"action": "APPROVE"},
+                        headers=headers,
+                    )
+                    assert override.status_code == 403
+
+            # Profile language persistence + Notification preferences
+            prof = await client.patch(
+                "/api/v1/auth/profile",
+                json={"preferred_language": "ar", "country": "Bangladesh"},
+                headers=headers,
+            )
+            assert prof.status_code == 200
+            assert prof.json()["preferred_language"] == "ar"
+
+            notifs = await client.get("/api/v1/notifications", headers=headers)
+            assert notifs.status_code == 200
+            assert len(notifs.json()["items"]) >= 1
 
     _run(run())

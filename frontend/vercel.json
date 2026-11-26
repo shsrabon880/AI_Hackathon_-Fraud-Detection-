@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/health",
+      "destination": "https://ai-hackathon-fraud-detection.onrender.com/health"
+    },
+    {
+      "source": "/health/(.*)",
+      "destination": "https://ai-hackathon-fraud-detection.onrender.com/health/$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://ai-hackathon-fraud-detection.onrender.com/api/$1"
     },

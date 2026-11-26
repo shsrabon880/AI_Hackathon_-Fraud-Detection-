@@ -25,12 +25,12 @@ class RiskFeatureContribution:
 
 
 def classify_risk(score: float) -> str:
-    """Classify 0-100 risk score per FraudShield thresholds."""
-    if score <= 30:
+    """Classify 0-100 risk score per central FraudShield thresholds (0-29 Low, 30-79 Medium/High, 80-100 Critical)."""
+    if score < 30:
         return "Low Risk"
-    if score <= 69:
+    if score < 80:
         return "Medium Risk"
-    return "High Risk"
+    return "Critical Risk"
 
 
 def score_transaction(
@@ -229,6 +229,6 @@ def score_transaction(
         "model_metadata": {
             "engine": "FraudShield Explainable Hybrid Scorer v1.0",
             "calibration": "Additive Feature Attribution (0-100)",
-            "thresholds": {"low": "0-30", "medium": "31-69", "high": "70-100"},
+            "thresholds": {"low": "0-29", "medium_high": "30-79", "critical": "80-100"},
         },
     }

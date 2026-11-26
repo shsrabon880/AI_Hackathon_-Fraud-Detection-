@@ -11,6 +11,7 @@ interface ConnectorItem {
   connection_status: "Connected" | "Not Connected" | "Synchronizing" | "Connection Error";
   connection_method: string;
   is_sandbox: boolean;
+  integration_status?: string;
   masked_account: string | null;
   data_sources: string[];
   last_sync_at: string | null;
@@ -274,6 +275,13 @@ export const ConnectorsPage: React.FC = () => {
                         Disconnect
                       </button>
                     </>
+                  ) : item.integration_status === "Integration Not Available Yet" ? (
+                    <span
+                      className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-[11px] font-medium text-amber-300"
+                      title="No official open API available yet — use authorized Statement Upload"
+                    >
+                      Integration Not Available Yet
+                    </span>
                   ) : (
                     <button
                       type="button"

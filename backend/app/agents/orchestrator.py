@@ -33,34 +33,31 @@ def run_agentic_decision_workflow(
 
     overall_score = round(min(100.0, (0.55 * ml_score) + (0.20 * graph_score) + (0.25 * rule_score)), 1)
 
-    if overall_score <= 30:
+    if overall_score < 30:
         risk_level = "Low Risk"
         recommended_action = "Approve"
-        notification_title = "Transaction Verified (Low Risk)"
+        notification_title = "Transaction Verified (Low Risk 0-29%)"
         rationale = (
             "ML behavioral scoring, device trust, and network IP checks all fall within normal bounds. "
             "No suspicious graph patterns detected."
         )
-    elif overall_score <= 69:
+    elif overall_score < 80:
         risk_level = "Medium Risk"
-        recommended_action = "Request Additional Verification"
-        notification_title = "Step-Up Verification Recommended"
+        recommended_action = "Confirm or Reject Required"
+        notification_title = "Fraud Alert: Verification Required (30-79%)"
         top_drivers = ", ".join(f["label"] for f in feature_explanations[:2])
         rationale = (
-            f"Moderate anomaly detected (score {overall_score}/100) driven primarily by: {top_drivers}. "
-            "Recommend user confirmation before finalizing or trusting this activity."
+            f"Suspicious activity detected (score {overall_score}/100) driven primarily by: {top_drivers}. "
+            "Explicit user confirmation or rejection required before proceeding."
         )
     else:
-        risk_level = "High Risk"
-        if ip_risk_score >= 75 or device_trust_status == "blocked":
-            recommended_action = "Escalate to Human Investigation"
-        else:
-            recommended_action = "Flag for Review"
-        notification_title = "High-Risk Financial Activity Flagged"
+        risk_level = "Critical Risk"
+        recommended_action = "Auto-Reject & Audit"
+        notification_title = "FRAUD ALERT: Critical Risk Auto-Rejected (80-100%)"
         top_drivers = ", ".join(f["label"] for f in feature_explanations[:3])
         rationale = (
-            f"High fraud probability ({overall_score}/100) triggered by {top_drivers}. "
-            "Human analyst review required. Note: External bank/MFS holds require an authorized provider API and user approval."
+            f"Critical fraud probability ({overall_score}/100) triggered by {top_drivers}. "
+            "Pending FraudShield authorization automatically rejected. Note: External bank/MFS holds depend on authorized provider API support."
         )
 
     return {

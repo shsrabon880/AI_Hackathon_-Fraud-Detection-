@@ -1,18 +1,88 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, EmailStr, Field
+import re
+from typing import Optional
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+SUPPORTED_LANG_PATTERN = r"^(en|bn|zh|fr|es|ru|ar|de)$"
+
+
+def _validate_strong_password(v: str) -> str:
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters long.")
+    if not re.search(r"[A-Z]", v):
+        raise ValueError("Password must include at least one uppercase letter.")
+    if not re.search(r"[a-z]", v):
+        raise ValueError("Password must include at least one lowercase letter.")
+    if not re.search(r"\d", v):
+        raise ValueError("Password must include at least one numeric digit.")
+    if not re.search(r"[^A-Za-z0-9]", v):
+        raise ValueError("Password must include at least one special character.")
+    return v
 
 
 # ---------- Auth & Users ----------
 class UserRegisterRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=120)
     email: EmailStr
+    phone_number: Optional[str] = Field(default=None, max_length=32)
+    country: str = Field(default="Bangladesh", min_length=2, max_length=80)
+    preferred_language: str = Field(default="en", pattern=SUPPORTED_LANG_PATTERN)
     password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def check_password_strength(cls, v: str) -> str:
+        return _validate_strong_password(v)
+
+
+class VerifySignupOTPRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class ResendSignupOTPRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password_strength(cls, v: str) -> str:
+        return _validate_strong_password(v)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def check_change_password_strength(cls, v: str) -> str:
+        return _validate_strong_password(v)
+
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    phone_number: Optional[str] = Field(default=None, max_length=32)
+    country: Optional[str] = Field(default=None, min_length=2, max_length=80)
+    preferred_language: Optional[str] = Field(default=None, pattern=SUPPORTED_LANG_PATTERN)
 
 
 class UserLoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1, max_length=128)
+    remember_me: bool = False
     mfa_code: Optional[str] = Field(default=None, max_length=10)
     device_name: Optional[str] = Field(default="Web Browser", max_length=120)
     device_fingerprint: Optional[str] = Field(default=None, max_length=128)
@@ -27,8 +97,12 @@ class UserOut(BaseModel):
     user_code: str
     full_name: str
     email: str
+    phone_number: Optional[str] = None
+    country: str = "Bangladesh"
+    preferred_language: str = "en"
     role: str
     status: str
+    email_verified: bool = True
     mfa_enabled: bool
     connected_accounts_count: int = 0
     created_at: datetime
@@ -101,6 +175,16 @@ class SessionRevokeRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
 
-# ---------- Alerts ----------
+# ---------- Alerts & Notifications ----------
 class AlertStatusUpdateRequest(BaseModel):
     status: str = Field(..., pattern="^(open|acknowledged|resolved)$")
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    fraud_alerts: Optional[bool] = None
+    critical_risk: Optional[bool] = None
+    new_device_login: Optional[bool] = None
+    account_connections: Optional[bool] = None
+    suspicious_login: Optional[bool] = None
+    tx_review: Optional[bool] = None
+    email_notifications: Optional[bool] = None

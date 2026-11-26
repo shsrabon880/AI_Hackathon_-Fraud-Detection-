@@ -20,6 +20,18 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
 
+    # Real email delivery for Sign-Up OTP verification
+    RESEND_API_KEY: str = ""
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_USE_TLS: bool = True
+    EMAIL_OTP_EXPIRE_SECONDS: int = 300
+    EMAIL_OTP_RESEND_COOLDOWN_SECONDS: int = 60
+    EMAIL_OTP_MAX_ATTEMPTS: int = 5
+
     # Security defaults
     MAX_UPLOAD_SIZE_BYTES: int = 5 * 1024 * 1024  # 5 MB max statement upload
     DEFAULT_RATE_LIMIT_PER_MIN: int = 120

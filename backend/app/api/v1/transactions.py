@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.orchestrator import run_agentic_decision_workflow
 from app.api.deps import get_current_user, verify_csrf_if_cookie_auth, write_audit_log
+from app.api.v1.notifications import emit_notification
 from app.core.config import get_settings
 from app.core.security import mask_account
 from app.db.database import get_db
@@ -91,8 +92,8 @@ def _apply_filters(
 
 
 def _classify_tier(score: float) -> tuple[str, int, str]:
-    """Three-tier automated & interactive risk decision routing."""
-    if score <= 30.0:
+    """Central three-tier risk decision routing (0-29% Low, 30-79% Confirm/Reject, 80-100% Auto-Reject)."""
+    if score < 30.0:
         return "AUTO_APPROVED", 1, "Completed"
     if score < 80.0:
         return "PENDING_USER_APPROVAL", 2, "Pending Review"
@@ -337,13 +338,33 @@ def _evaluate_and_store_tx(
                 device_id=matched_device.id if matched_device else None,
                 severity="critical",
                 title=f"CRITICAL FRAUD ALERT — Auto-Rejected ({tx.tx_ref})",
-                description=f"Unauthorized high-risk transfer ({effective_score}%) from IP {ip_address or 'Unknown'} blocked automatically.",
+                description=f"Unauthorized critical-risk transfer ({effective_score}%) from IP {ip_address or 'Unknown'} blocked automatically.",
                 status="open",
                 is_demo_data=is_demo_data,
             )
         )
     db.commit()
     db.refresh(tx)
+
+    if effective_score >= 80.0:
+        emit_notification(
+            db,
+            user_id=user.id,
+            category="critical_risk",
+            severity="critical",
+            title=f"CRITICAL FRAUD ALERT ({effective_score}% Risk)",
+            message=f"Pending transfer {tx.tx_ref} ({currency} {amount:,.0f} to {recipient_name}) was auto-rejected.",
+        )
+    elif effective_score >= 30.0:
+        emit_notification(
+            db,
+            user_id=user.id,
+            category="fraud_alert",
+            severity="high",
+            title=f"Fraud Alert: Review Required ({effective_score}% Risk)",
+            message=f"Transfer {tx.tx_ref} ({currency} {amount:,.0f} to {recipient_name}) paused for your Confirm/Reject decision.",
+        )
+
     return tx, matched_device
 
 
@@ -358,6 +379,8 @@ def list_transactions(
     max_amount: Optional[float] = Query(default=None),
     sort_by: str = Query(default="tx_timestamp"),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
+    limit: Optional[int] = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -374,10 +397,12 @@ def list_transactions(
         sort_by,
         sort_dir,
     )
+    paged = items[offset : offset + limit] if limit is not None else items[offset:]
     return {
         "range": range,
+        "total": len(items),
         "analytics": _compute_analytics(items),
-        "items": [_serialize_tx(t) for t in items],
+        "items": [_serialize_tx(t) for t in paged],
     }
 
 
@@ -576,6 +601,12 @@ def handle_tier_decision(
         raise HTTPException(status_code=404, detail="Transaction not found.")
 
     dev = db.query(Device).filter(Device.id == tx.device_id).first() if tx.device_id else None
+
+    if tx.risk_score >= 80.0 and payload.action == "APPROVE":
+        raise HTTPException(
+            status_code=403,
+            detail="Critical risk transactions (80-100%) are automatically rejected by security policy and cannot be overridden.",
+        )
 
     if payload.action == "APPROVE":
         tx.status = "Approved by User"
