@@ -194,9 +194,8 @@ def register(payload: UserRegisterRequest, request: Request, db: Session = Depen
     if db.query(User).filter(User.email == email_norm).first():
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
 
-    next_num = 1001 + db.query(User).count()
     user = User(
-        user_code=f"USR-{next_num}",
+        user_code=f"USR-{secrets.token_hex(4).upper()}",
         full_name=payload.full_name.strip(),
         email=email_norm,
         phone_number=phone_norm,
