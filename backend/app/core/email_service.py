@@ -31,7 +31,7 @@ def _dispatch_email(recipient_email: str, subject: str, text_body: str, html_bod
                 },
                 json={
                     "sender": {"name": "FinSphere AI - FraudShield", "email": from_addr},
-                    "to": [{"email": recipient_email, "name": full_name}],
+                    "to": [{"email": recipient_email}],
                     "subject": subject,
                     "textContent": text_body,
                     "htmlContent": html_body,
