@@ -65,7 +65,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => Boolean(api.getToken()));
 
   const refreshUser = async () => {
     try {
@@ -78,6 +78,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    if (!api.getToken()) {
+      // Silently pre-warm the cloud backend without blocking initial Landing/Login UI render
+      fetch("/health").catch(() => {});
+      return;
+    }
     refreshUser().finally(() => setLoading(false));
   }, []);
 

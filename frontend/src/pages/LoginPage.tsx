@@ -724,7 +724,7 @@ export const LoginPage: React.FC = () => {
           <div className="mt-5 p-3.5 rounded-xl bg-gradient-to-r from-[#0a1020] via-[#13112b] to-[#0a1020] border border-purple-500/30 text-center shadow-inner">
             <div className="inline-flex items-center gap-2 text-xs tracking-wide text-slate-300">
               <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-              <span>Created by</span>
+              <span>Developed By</span>
               <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#a78bfa] via-purple-300 to-blue-400">
                 Team GlitchCraft
               </span>
