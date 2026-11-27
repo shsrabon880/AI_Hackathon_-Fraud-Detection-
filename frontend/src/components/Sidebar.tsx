@@ -7,7 +7,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Cpu,
   FileSearch,
   FileText,
   History,
@@ -151,8 +150,12 @@ export const Sidebar: React.FC = () => {
       >
         <div className="h-16 px-4 flex items-center justify-between border-b border-[#211b3d]">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-[#2e2259] border border-[#5b43b8]/40 flex items-center justify-center shrink-0">
-              <Cpu className="w-4 h-4 text-[#a78bfa]" />
+            <div className="w-9 h-9 rounded-lg bg-[#0b101e] border border-[#5b43b8]/50 overflow-hidden flex items-center justify-center shrink-0">
+              <img
+                src="/logos/fraudshield_logo.jpg"
+                alt="FraudShield Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             {!collapsed && (
               <div className="leading-tight truncate">
@@ -211,7 +214,11 @@ export const Sidebar: React.FC = () => {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-[#a78bfa]" />
+            <img
+              src="/logos/fraudshield_logo.jpg"
+              alt="FraudShield Logo"
+              className="w-7 h-7 rounded-md object-cover border border-[#5b43b8]/40"
+            />
             <span className="text-sm font-bold text-white">FraudShield</span>
           </div>
         </div>
@@ -231,7 +238,11 @@ export const Sidebar: React.FC = () => {
           <div className="relative z-10 w-72 max-w-[85vw] bg-[#120f24] border-e border-[#231d42] flex flex-col h-full">
             <div className="h-14 px-4 flex items-center justify-between border-b border-[#211b3d]">
               <div className="flex items-center gap-2">
-                <Cpu className="w-5 h-5 text-[#a78bfa]" />
+                <img
+                  src="/logos/fraudshield_logo.jpg"
+                  alt="FraudShield Logo"
+                  className="w-7 h-7 rounded-md object-cover border border-[#5b43b8]/40"
+                />
                 <span className="text-sm font-bold text-white">FinSphere AI</span>
               </div>
               <button

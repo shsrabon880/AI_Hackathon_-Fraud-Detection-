@@ -5,7 +5,6 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock,
-  Cpu,
   FileSearch,
   Globe,
   KeyRound,
@@ -217,8 +216,12 @@ export const LoginPage: React.FC = () => {
       <header className="relative z-10 border-b border-[#1a2238] bg-[#080c17]/85 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-[#2e2259] border border-[#5b43b8]/50 flex items-center justify-center">
-              <Cpu className="w-5 h-5 text-[#a78bfa]" />
+            <div className="w-9 h-9 rounded-lg bg-[#0b101e] border border-[#5b43b8]/50 overflow-hidden flex items-center justify-center shrink-0">
+              <img
+                src="/logos/fraudshield_logo.jpg"
+                alt="FraudShield Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <div className="text-sm font-bold text-white leading-tight">FinSphere AI</div>
